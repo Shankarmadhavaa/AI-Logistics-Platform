@@ -219,3 +219,5 @@ __marimo__/
 
 # Uploaded documents - never commit
 data/uploads/*
+
+app.log
