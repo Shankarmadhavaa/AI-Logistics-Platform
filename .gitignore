@@ -221,3 +221,6 @@ __marimo__/
 data/uploads/*
 
 app.log
+
+# Generated document metadata
+data/metadata/documents.json
