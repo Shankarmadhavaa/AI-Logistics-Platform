@@ -86,3 +86,19 @@ def get_all_documents():
             encoding="utf-8"
         )
     )
+
+def get_document_by_id(document_id: str):
+    initialize_metadata_storage()
+
+    documents = json.loads(
+        METADATA_FILE.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    for document in documents:
+
+        if document["document_id"] == document_id:
+            return document
+
+    return None
