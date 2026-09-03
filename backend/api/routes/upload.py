@@ -5,6 +5,12 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from backend.schemas.document import DocumentMetadata
 from backend.services.document_metadata import save_document_metadata
+from backend.services.document_quality import check_document_quality
+from backend.services.document_ocr import extract_text
+from backend.services.document_relevance import check_document_relevance
+from backend.services.document_processing_decision import (
+    make_processing_decision,
+)
 from backend.utils.document_id import generate_document_id
 from backend.utils.duplicate_detection import (
     calculate_file_hash,
@@ -43,7 +49,6 @@ async def upload_document(file: UploadFile = File(...)):
             detail="Filename is required",
         )
 
-    # Get file extension
     file_extension = Path(file.filename).suffix.lower()
 
     # --------------------------------
@@ -111,7 +116,40 @@ async def upload_document(file: UploadFile = File(...)):
         buffer.write(file_content)
 
     # --------------------------------
-    # 9. Create document metadata
+    # 9. Check document quality
+    # --------------------------------
+
+    quality_result = check_document_quality(
+        str(file_path)
+    )
+
+    # --------------------------------
+    # 10. Extract text using OCR
+    # --------------------------------
+
+    ocr_result = extract_text(
+        str(file_path)
+    )
+
+    # --------------------------------
+    # 11. Check document relevance
+    # --------------------------------
+
+    relevance_result = check_document_relevance(
+        ocr_result["text"]
+    )
+
+    # --------------------------------
+    # 12. Make processing decision
+    # --------------------------------
+
+    processing_result = make_processing_decision(
+        quality_result=quality_result,
+        relevance_result=relevance_result,
+    )
+
+    # --------------------------------
+    # 13. Create document metadata
     # --------------------------------
 
     metadata = DocumentMetadata(
@@ -122,16 +160,29 @@ async def upload_document(file: UploadFile = File(...)):
         file_hash=file_hash,
         uploaded_at=datetime.now(),
         status="UPLOADED",
+
+        quality_status=quality_result["quality_status"],
+        quality_score=quality_result["quality_score"],
+        quality_reason=quality_result["reason"],
+
+        processing_status=processing_result["processing_status"],
+        processing_reason=processing_result["reason"],
+
+        manual_review_required=processing_result[
+            "manual_review_required"
+        ],
+
+        document_type=relevance_result["document_type"],
     )
 
     # --------------------------------
-    # 10. Save document metadata
+    # 14. Save document metadata
     # --------------------------------
 
     save_document_metadata(metadata)
 
     # --------------------------------
-    # 11. Return metadata
+    # 15. Return metadata
     # --------------------------------
 
     return metadata
