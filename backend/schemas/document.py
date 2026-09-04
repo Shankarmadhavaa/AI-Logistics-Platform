@@ -52,3 +52,5 @@ class DocumentMetadata(BaseModel):
     # --------------------------------
 
     document_type: str | None = None
+
+    ocr_text: str | None = None

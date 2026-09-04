@@ -173,6 +173,7 @@ async def upload_document(file: UploadFile = File(...)):
         ],
 
         document_type=relevance_result["document_type"],
+        ocr_text=ocr_result["text"],
     )
 
     # --------------------------------
