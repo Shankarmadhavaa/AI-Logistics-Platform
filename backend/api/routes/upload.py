@@ -183,15 +183,17 @@ async def upload_document(
     # --------------------------------
 
     quality_result = check_document_quality(
-        str(file_path)
-    )
+    str(file_path)
+)
 
-
-    # --------------------------------
-    # 10. Extract text using OCR
-    # --------------------------------
-
-    ocr_result = extract_text(
+    if quality_result["quality_status"] == DO_NOT_PROCESS:
+      ocr_result = {
+        "success": False,
+        "text": "",
+        "reason": quality_result["reason"],
+    }
+    else:
+       ocr_result = extract_text(
         str(file_path)
     )
 
