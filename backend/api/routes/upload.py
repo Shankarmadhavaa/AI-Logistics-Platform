@@ -4,14 +4,35 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
 from backend.schemas.document import DocumentMetadata
-from backend.services.document_metadata import save_document_metadata
-from backend.services.document_quality import check_document_quality
-from backend.services.document_ocr import extract_text
-from backend.services.document_relevance import check_document_relevance
+
+from backend.services.document_metadata import (
+    save_document_metadata,
+)
+
+from backend.services.document_quality import (
+    check_document_quality,
+)
+
+from backend.services.document_ocr import (
+    extract_text,
+)
+
+from backend.services.document_classification import (
+    classify_document,
+)
+
+from backend.services.document_relevance import (
+    check_document_relevance,
+)
+
 from backend.services.document_processing_decision import (
     make_processing_decision,
 )
-from backend.utils.document_id import generate_document_id
+
+from backend.utils.document_id import (
+    generate_document_id,
+)
+
 from backend.utils.duplicate_detection import (
     calculate_file_hash,
     find_duplicate,
@@ -30,14 +51,25 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Allowed document types
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".jpg",
+    ".jpeg",
+    ".png",
+}
+
 
 # Maximum file size: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
-@router.post("/upload", response_model=DocumentMetadata)
-async def upload_document(file: UploadFile = File(...)):
+@router.post(
+    "/upload",
+    response_model=DocumentMetadata
+)
+async def upload_document(
+    file: UploadFile = File(...)
+):
 
     # --------------------------------
     # 1. Check filename
@@ -49,7 +81,10 @@ async def upload_document(file: UploadFile = File(...)):
             detail="Filename is required",
         )
 
-    file_extension = Path(file.filename).suffix.lower()
+    file_extension = Path(
+        file.filename
+    ).suffix.lower()
+
 
     # --------------------------------
     # 2. Check file type
@@ -58,14 +93,19 @@ async def upload_document(file: UploadFile = File(...)):
     if file_extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail="Unsupported file type. Allowed types: PDF, JPG, JPEG, PNG",
+            detail=(
+                "Unsupported file type. "
+                "Allowed types: PDF, JPG, JPEG, PNG"
+            ),
         )
+
 
     # --------------------------------
     # 3. Read file
     # --------------------------------
 
     file_content = await file.read()
+
 
     # --------------------------------
     # 4. Check file size
@@ -79,11 +119,15 @@ async def upload_document(file: UploadFile = File(...)):
             detail="File too large. Maximum allowed size is 10 MB",
         )
 
+
     # --------------------------------
     # 5. Calculate file hash
     # --------------------------------
 
-    file_hash = calculate_file_hash(file_content)
+    file_hash = calculate_file_hash(
+        file_content
+    )
+
 
     # --------------------------------
     # 6. Check for duplicate
@@ -97,8 +141,12 @@ async def upload_document(file: UploadFile = File(...)):
     if duplicate_file:
         raise HTTPException(
             status_code=409,
-            detail=f"Duplicate document detected. Existing file: {duplicate_file.name}",
+            detail=(
+                "Duplicate document detected. "
+                f"Existing file: {duplicate_file.name}"
+            ),
         )
+
 
     # --------------------------------
     # 7. Generate document ID
@@ -106,14 +154,22 @@ async def upload_document(file: UploadFile = File(...)):
 
     document_id = generate_document_id()
 
+
     # --------------------------------
     # 8. Save file
     # --------------------------------
 
     file_path = UPLOAD_DIR / file.filename
 
-    with open(file_path, "wb") as buffer:
-        buffer.write(file_content)
+    with open(
+        file_path,
+        "wb"
+    ) as buffer:
+
+        buffer.write(
+            file_content
+        )
+
 
     # --------------------------------
     # 9. Check document quality
@@ -123,6 +179,7 @@ async def upload_document(file: UploadFile = File(...)):
         str(file_path)
     )
 
+
     # --------------------------------
     # 10. Extract text using OCR
     # --------------------------------
@@ -131,16 +188,27 @@ async def upload_document(file: UploadFile = File(...)):
         str(file_path)
     )
 
+
     # --------------------------------
-    # 11. Check document relevance
+    # 11. Classify document
+    # --------------------------------
+
+    classification_result = classify_document(
+        ocr_result["text"]
+    )
+
+
+    # --------------------------------
+    # 12. Check document relevance
     # --------------------------------
 
     relevance_result = check_document_relevance(
         ocr_result["text"]
     )
 
+
     # --------------------------------
-    # 12. Make processing decision
+    # 13. Make processing decision
     # --------------------------------
 
     processing_result = make_processing_decision(
@@ -148,42 +216,101 @@ async def upload_document(file: UploadFile = File(...)):
         relevance_result=relevance_result,
     )
 
+
     # --------------------------------
-    # 13. Create document metadata
+    # 14. Create document metadata
     # --------------------------------
 
     metadata = DocumentMetadata(
+
         document_id=document_id,
+
         filename=file.filename,
+
         content_type=file.content_type,
+
         file_size_bytes=file_size,
+
         file_hash=file_hash,
+
         uploaded_at=datetime.now(),
+
         status="UPLOADED",
 
-        quality_status=quality_result["quality_status"],
-        quality_score=quality_result["quality_score"],
-        quality_reason=quality_result["reason"],
 
-        processing_status=processing_result["processing_status"],
-        processing_reason=processing_result["reason"],
+        # --------------------------------
+        # Document quality
+        # --------------------------------
+
+        quality_status=quality_result[
+            "quality_status"
+        ],
+
+        quality_score=quality_result[
+            "quality_score"
+        ],
+
+        quality_reason=quality_result[
+            "reason"
+        ],
+
+
+        # --------------------------------
+        # Processing decision
+        # --------------------------------
+
+        processing_status=processing_result[
+            "processing_status"
+        ],
+
+        processing_reason=processing_result[
+            "reason"
+        ],
+
 
         manual_review_required=processing_result[
             "manual_review_required"
         ],
 
-        document_type=relevance_result["document_type"],
-        ocr_text=ocr_result["text"],
+
+        # --------------------------------
+        # Document classification
+        # --------------------------------
+
+        document_type=classification_result[
+            "document_type"
+        ],
+
+        classification_confidence=classification_result[
+            "confidence"
+        ],
+
+        classification_reason=classification_result[
+            "reason"
+        ],
+
+
+        # --------------------------------
+        # OCR
+        # --------------------------------
+
+        ocr_text=ocr_result[
+            "text"
+        ],
     )
 
-    # --------------------------------
-    # 14. Save document metadata
-    # --------------------------------
-
-    save_document_metadata(metadata)
 
     # --------------------------------
-    # 15. Return metadata
+    # 15. Save document metadata
+    # --------------------------------
+
+    save_document_metadata(
+        metadata
+    )
+
+
+    # --------------------------------
+    # 16. Return metadata
     # --------------------------------
 
     return metadata

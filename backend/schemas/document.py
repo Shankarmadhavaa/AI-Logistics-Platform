@@ -53,4 +53,8 @@ class DocumentMetadata(BaseModel):
 
     document_type: str | None = None
 
+    classification_confidence: int | None = None
+
+    classification_reason: str | None = None
+
     ocr_text: str | None = None
