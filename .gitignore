@@ -224,3 +224,4 @@ app.log
 
 # Generated document metadata
 data/metadata/documents.json
+data/test_documents/
