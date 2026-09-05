@@ -38,6 +38,13 @@ from backend.utils.duplicate_detection import (
     find_duplicate,
 )
 
+from backend.core.document_status import (
+    UPLOADED,
+    PROCESSING,
+    PROCESSED,
+    DO_NOT_PROCESS,
+    FAILED,
+)
 
 router = APIRouter(
     prefix="/documents",
@@ -215,8 +222,7 @@ async def upload_document(
         quality_result=quality_result,
         relevance_result=relevance_result,
     )
-
-
+    
     # --------------------------------
     # 14. Create document metadata
     # --------------------------------
@@ -235,7 +241,7 @@ async def upload_document(
 
         uploaded_at=datetime.now(),
 
-        status="UPLOADED",
+        status=UPLOADED,
 
 
         # --------------------------------
