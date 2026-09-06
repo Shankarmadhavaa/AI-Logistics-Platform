@@ -279,7 +279,11 @@ async def upload_document(
         manual_review_required=processing_result[
             "manual_review_required"
         ],
-
+        review_status=(
+            "PENDING"
+            if processing_result["manual_review_required"]
+            else None
+        ),
 
         # --------------------------------
         # Document classification

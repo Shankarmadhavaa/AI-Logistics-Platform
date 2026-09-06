@@ -46,6 +46,7 @@ class DocumentMetadata(BaseModel):
     # --------------------------------
 
     manual_review_required: bool = False
+    review_status: str | None = None
 
     # --------------------------------
     # Document classification
