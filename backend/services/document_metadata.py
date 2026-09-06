@@ -102,3 +102,38 @@ def get_document_by_id(document_id: str):
             return document
 
     return None
+
+def update_document_review_status(
+    document_id: str,
+    review_status: str,
+):
+    initialize_metadata_storage()
+
+    documents = json.loads(
+        METADATA_FILE.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    for document in documents:
+        if document["document_id"] == document_id:
+
+            document["review_status"] = review_status
+
+            if review_status in {
+                "APPROVED",
+                "REJECTED",
+            }:
+                document["manual_review_required"] = False
+
+            METADATA_FILE.write_text(
+                json.dumps(
+                    documents,
+                    indent=4
+                ),
+                encoding="utf-8"
+            )
+
+            return document
+
+    return None

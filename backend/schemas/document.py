@@ -59,3 +59,7 @@ class DocumentMetadata(BaseModel):
     classification_reason: str | None = None
 
     ocr_text: str | None = None
+
+class DocumentReviewRequest(BaseModel):
+
+    review_status: str

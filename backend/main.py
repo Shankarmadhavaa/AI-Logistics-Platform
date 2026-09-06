@@ -5,8 +5,11 @@ from backend.core.exceptions import AppException
 from backend.core.logging_config import setup_logging
 from backend.api.routes.upload import router as upload_router
 from backend.api.routes.documents import router as documents_router
-
+from backend.api.routes.review import router as review_router
+   
 setup_logging()
+
+ 
 
 app = FastAPI(
     title="AI Logistics Platform",
@@ -16,8 +19,8 @@ app = FastAPI(
 
 app.add_exception_handler(AppException, app_exception_handler)
 app.include_router(upload_router)
+app.include_router(review_router)
 app.include_router(documents_router)
-
 
 @app.get("/")
 def root():
