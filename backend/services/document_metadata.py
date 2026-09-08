@@ -87,7 +87,16 @@ def get_all_documents():
         )
     )
 
+
+# --------------------------------
+# Get document by ID
+# --------------------------------
+
 def get_document_by_id(document_id: str):
+    """
+    Return one document by document ID.
+    """
+
     initialize_metadata_storage()
 
     documents = json.loads(
@@ -103,10 +112,22 @@ def get_document_by_id(document_id: str):
 
     return None
 
+
+# --------------------------------
+# Update document review status
+# --------------------------------
+
 def update_document_review_status(
     document_id: str,
     review_status: str,
 ):
+    """
+    Approve or reject a document requiring manual review.
+
+    A document that has already been approved or rejected
+    cannot be reviewed again.
+    """
+
     initialize_metadata_storage()
 
     documents = json.loads(
@@ -116,16 +137,31 @@ def update_document_review_status(
     )
 
     for document in documents:
+
         if document["document_id"] == document_id:
 
+            # Prevent changing an already finalized review
+            if document.get("review_status") in {
+                "APPROVED",
+                "REJECTED",
+            }:
+                return {
+                    "error": "Document has already been reviewed",
+                    "document": document,
+                }
+
+            # Update review status
             document["review_status"] = review_status
 
+            # Once approved or rejected,
+            # manual review is no longer pending
             if review_status in {
                 "APPROVED",
                 "REJECTED",
             }:
                 document["manual_review_required"] = False
 
+            # Save updated metadata
             METADATA_FILE.write_text(
                 json.dumps(
                     documents,
