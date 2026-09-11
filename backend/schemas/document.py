@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -68,6 +68,12 @@ class DocumentMetadata(BaseModel):
     extraction_completeness: int | None = None
     extraction_reason: str | None = None
 
+    processing_path: str | None = None
+
+    invoice_like: bool = False
+    invoice_detection_confidence: int | None = None
+    secondary_analysis_reason: str | None = None
+     
     # --------------------------------------------------------
     # Logistics Context
     # --------------------------------------------------------
