@@ -1,14 +1,18 @@
 from pathlib import Path
 
-from PIL import Image
-import pypdf
+import cv2
+import numpy as np
+
+from pypdf import PdfReader
 
 
-# --------------------------------
-# Supported document extensions
-# --------------------------------
+SUPPORTED_IMAGE_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+}
 
-SUPPORTED_EXTENSIONS = {
+SUPPORTED_DOCUMENT_EXTENSIONS = {
     ".pdf",
     ".jpg",
     ".jpeg",
@@ -16,197 +20,418 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
-# --------------------------------
-# Check image readability
-# --------------------------------
-
-def check_image_readability(file_path: Path) -> tuple[bool, bool]:
+def calculate_image_brightness(image) -> float:
     """
-    Check whether an image can be opened and whether
-    the image is completely blank.
+    Calculate the average brightness of an image.
 
     Returns:
-        (readable, blank)
-
-    Important:
-    - Slight blur is allowed.
-    - Dark/light images are allowed.
-    - Tilted images are allowed.
-    - Only completely blank images are rejected.
+        Brightness value between 0 and 255.
     """
 
-    try:
-        # First check whether the image file is valid
-        with Image.open(file_path) as image:
-            image.verify()
+    if image is None:
+        return 0.0
 
-        # Re-open the image after verify()
-        with Image.open(file_path) as image:
+    grayscale = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY,
+    )
 
-            width, height = image.size
-
-            # Invalid image dimensions
-            if width <= 0 or height <= 0:
-                return False, False
-
-            # Convert image to grayscale
-            grayscale = image.convert("L")
-
-            # Get minimum and maximum pixel values
-            minimum, maximum = grayscale.getextrema()
-
-            # --------------------------------
-            # Detect completely blank image
-            # --------------------------------
-            #
-            # JPEG compression can create small pixel
-            # variations even when the page looks blank.
-            #
-            # A very small pixel range means the image
-            # is essentially one uniform blank surface.
-            #
-            if maximum - minimum <= 5:
-                return True, True
-
-            # Load the image into memory
-            grayscale.load()
-
-        # Image is readable and contains pixel variation
-        return True, False
-
-    except Exception:
-        return False, False
+    return float(np.mean(grayscale))
 
 
-# --------------------------------
-# Check PDF readability
-# --------------------------------
-
-def check_pdf_readability(file_path: Path) -> bool:
+def calculate_image_contrast(image) -> float:
     """
-    Check whether a PDF can be opened and contains
-    at least one page.
+    Calculate image contrast using grayscale standard deviation.
+
+    Higher values generally indicate stronger contrast.
     """
 
-    try:
-        reader = pypdf.PdfReader(str(file_path))
+    if image is None:
+        return 0.0
 
-        if len(reader.pages) == 0:
-            return False
+    grayscale = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY,
+    )
 
-        return True
-
-    except Exception:
-        return False
+    return float(np.std(grayscale))
 
 
-# --------------------------------
-# Check document quality
-# --------------------------------
-
-def check_document_quality(file_path: str) -> dict:
+def calculate_image_blur(image) -> float:
     """
-    Perform basic document quality checks.
+    Estimate image sharpness using variance of Laplacian.
 
-    Decision rules:
+    Higher values generally indicate a sharper image.
+    """
 
-    PROCESS:
-        Document exists, is supported, and can be read.
+    if image is None:
+        return 0.0
 
-    DO_NOT_PROCESS:
-        Document is missing, empty, unsupported,
-        corrupted, unreadable, or completely blank.
+    grayscale = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY,
+    )
 
-    MANUAL REVIEW:
-        Used when the document requires human attention.
+    return float(
+        cv2.Laplacian(
+            grayscale,
+            cv2.CV_64F,
+        ).var()
+    )
+
+
+def calculate_non_blank_ratio(image) -> float:
+    """
+    Estimate how much meaningful visual content exists
+    in an image.
+
+    Returns:
+        Value between 0 and 1.
+    """
+
+    if image is None:
+        return 0.0
+
+    grayscale = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY,
+    )
+
+    _, threshold = cv2.threshold(
+        grayscale,
+        245,
+        255,
+        cv2.THRESH_BINARY_INV,
+    )
+
+    non_blank_pixels = np.count_nonzero(
+        threshold
+    )
+
+    total_pixels = threshold.size
+
+    if total_pixels == 0:
+        return 0.0
+
+    return float(
+        non_blank_pixels / total_pixels
+    )
+
+
+def is_image_blank(image) -> bool:
+    """
+    Determine whether an image is effectively blank.
+
+    A document is considered blank when almost no
+    meaningful visual content is detected.
+    """
+
+    non_blank_ratio = calculate_non_blank_ratio(
+        image
+    )
+
+    return non_blank_ratio < 0.001
+
+
+def analyze_image_quality(
+    file_path: str,
+) -> dict:
+    """
+    Analyze an image without rejecting it merely
+    because its visual quality is poor.
+
+    Important product rule:
+
+    Poor quality != invalid document.
+
+    Only a completely blank image should normally
+    stop processing.
     """
 
     path = Path(file_path)
 
-    # --------------------------------
-    # 1. Check if file exists
-    # --------------------------------
+    if not path.exists():
+        return {
+            "success": False,
+            "is_blank": False,
+            "quality_score": 0,
+            "quality_status": "INVALID",
+            "reason": "File does not exist",
+        }
+
+    if path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        return {
+            "success": False,
+            "is_blank": False,
+            "quality_score": 0,
+            "quality_status": "UNSUPPORTED",
+            "reason": (
+                "Image quality analysis is currently "
+                "supported for JPG, JPEG, and PNG"
+            ),
+        }
+
+    image = cv2.imread(
+        str(path)
+    )
+
+    if image is None:
+        return {
+            "success": False,
+            "is_blank": False,
+            "quality_score": 0,
+            "quality_status": "INVALID",
+            "reason": "Unable to read image",
+        }
+
+    height, width = image.shape[:2]
+
+    if height == 0 or width == 0:
+        return {
+            "success": False,
+            "is_blank": False,
+            "quality_score": 0,
+            "quality_status": "INVALID",
+            "reason": "Image has invalid dimensions",
+        }
+
+    brightness = calculate_image_brightness(
+        image
+    )
+
+    contrast = calculate_image_contrast(
+        image
+    )
+
+    blur_score = calculate_image_blur(
+        image
+    )
+
+    non_blank_ratio = calculate_non_blank_ratio(
+        image
+    )
+
+    blank = is_image_blank(
+        image
+    )
+
+    if blank:
+        return {
+            "success": True,
+            "is_blank": True,
+            "quality_score": 0,
+            "quality_status": "BLANK",
+            "reason": (
+                "Document appears to be completely blank"
+            ),
+            "width": width,
+            "height": height,
+            "brightness": round(
+                brightness,
+                2,
+            ),
+            "contrast": round(
+                contrast,
+                2,
+            ),
+            "blur_score": round(
+                blur_score,
+                2,
+            ),
+            "non_blank_ratio": round(
+                non_blank_ratio,
+                6,
+            ),
+        }
+
+    quality_score = 100
+
+    if brightness < 40:
+        quality_score -= 20
+    elif brightness < 70:
+        quality_score -= 10
+    elif brightness > 235:
+        quality_score -= 10
+
+    if contrast < 15:
+        quality_score -= 20
+    elif contrast < 25:
+        quality_score -= 10
+
+    if blur_score < 30:
+        quality_score -= 30
+    elif blur_score < 80:
+        quality_score -= 15
+
+    if width < 500 or height < 500:
+        quality_score -= 10
+
+    quality_score = max(
+        0,
+        min(
+            100,
+            quality_score,
+        ),
+    )
+
+    if quality_score >= 80:
+        quality_status = "GOOD"
+    elif quality_score >= 60:
+        quality_status = "FAIR"
+    else:
+        quality_status = "LOW"
+
+    return {
+        "success": True,
+        "is_blank": False,
+        "quality_score": quality_score,
+        "quality_status": quality_status,
+        "reason": (
+            "Document contains visual content and "
+            "can proceed to OCR"
+        ),
+        "width": width,
+        "height": height,
+        "brightness": round(
+            brightness,
+            2,
+        ),
+        "contrast": round(
+            contrast,
+            2,
+        ),
+        "blur_score": round(
+            blur_score,
+            2,
+        ),
+        "non_blank_ratio": round(
+            non_blank_ratio,
+            6,
+        ),
+    }
+
+
+def analyze_pdf_quality(
+    file_path: str,
+) -> dict:
+    """
+    Perform basic validation for PDF documents.
+
+    Detailed PDF page rendering and page-level quality
+    analysis will be implemented in the PDF preprocessing
+    engine.
+    """
+
+    path = Path(file_path)
 
     if not path.exists():
         return {
-            "quality_status": "DO_NOT_PROCESS",
+            "success": False,
+            "is_blank": False,
             "quality_score": 0,
+            "quality_status": "INVALID",
             "reason": "File does not exist",
-            "manual_review_required": True,
         }
 
-    # --------------------------------
-    # 2. Check file size
-    # --------------------------------
+    try:
+        reader = PdfReader(
+            str(path)
+        )
 
-    file_size = path.stat().st_size
+        page_count = len(
+            reader.pages
+        )
 
-    if file_size == 0:
+        if page_count == 0:
+            return {
+                "success": True,
+                "is_blank": True,
+                "quality_score": 0,
+                "quality_status": "BLANK",
+                "reason": (
+                    "PDF contains no pages"
+                ),
+                "page_count": 0,
+            }
+
         return {
-            "quality_status": "DO_NOT_PROCESS",
-            "quality_score": 0,
-            "reason": "File is empty",
-            "manual_review_required": True,
+            "success": True,
+            "is_blank": False,
+            "quality_score": 100,
+            "quality_status": "GOOD",
+            "reason": (
+                "PDF is structurally readable "
+                "and contains pages"
+            ),
+            "page_count": page_count,
         }
 
-    # --------------------------------
-    # 3. Check file extension
-    # --------------------------------
+    except Exception as error:
+        return {
+            "success": False,
+            "is_blank": False,
+            "quality_score": 0,
+            "quality_status": "INVALID",
+            "reason": (
+                f"Unable to read PDF: {error}"
+            ),
+        }
+
+
+def check_document_quality(
+    file_path: str,
+) -> dict:
+    """
+    Main document quality entry point.
+
+    Important:
+
+    This function does NOT reject documents merely
+    because they are blurry, dark, tilted, rotated,
+    or otherwise low quality.
+
+    Documents containing any meaningful content should
+    continue to OCR.
+    """
+
+    path = Path(
+        file_path
+    )
+
+    if not path.exists():
+        return {
+            "success": False,
+            "is_blank": False,
+            "quality_score": 0,
+            "quality_status": "INVALID",
+            "reason": "File does not exist",
+        }
 
     extension = path.suffix.lower()
 
-    if extension not in SUPPORTED_EXTENSIONS:
+    if extension in SUPPORTED_IMAGE_EXTENSIONS:
+        return analyze_image_quality(
+            str(path)
+        )
+
+    if extension == ".pdf":
+        return analyze_pdf_quality(
+            str(path)
+        )
+
+    if extension not in SUPPORTED_DOCUMENT_EXTENSIONS:
         return {
-            "quality_status": "DO_NOT_PROCESS",
+            "success": False,
+            "is_blank": False,
             "quality_score": 0,
+            "quality_status": "UNSUPPORTED",
             "reason": "Unsupported document type",
-            "manual_review_required": True,
         }
-
-    # --------------------------------
-    # 4. Check readability
-    # --------------------------------
-
-    if extension in {".jpg", ".jpeg", ".png"}:
-
-        readable, blank = check_image_readability(path)
-
-        # Completely blank image
-        if blank:
-            return {
-                "quality_status": "DO_NOT_PROCESS",
-                "quality_score": 0,
-                "reason": "Image is completely blank",
-                "manual_review_required": True,
-            }
-
-    elif extension == ".pdf":
-
-        readable = check_pdf_readability(path)
-
-    else:
-
-        readable = False
-
-    # --------------------------------
-    # 5. Stop unreadable documents
-    # --------------------------------
-
-    if not readable:
-        return {
-            "quality_status": "DO_NOT_PROCESS",
-            "quality_score": 0,
-            "reason": "Document could not be read or is corrupted",
-            "manual_review_required": True,
-        }
-
-    # --------------------------------
-    # 6. Basic quality passed
-    # --------------------------------
 
     return {
-        "quality_status": "PROCESS",
-        "quality_score": 100,
-        "reason": "Document is readable and ready for processing",
-        "manual_review_required": False,
+        "success": False,
+        "is_blank": False,
+        "quality_score": 0,
+        "quality_status": "INVALID",
+        "reason": "Unable to analyze document",
     }
