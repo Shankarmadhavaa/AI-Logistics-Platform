@@ -225,3 +225,15 @@ app.log
 # Generated document metadata
 data/metadata/documents.json
 data/test_documents/
+
+
+# Runtime/generated data
+data/uploads/
+data/processed/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local test artifacts
+*.log
